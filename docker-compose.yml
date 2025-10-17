@@ -1,0 +1,59 @@
+services:
+  uptime-monitor-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: uptime-monitor-app:latest
+    container_name: uptime-monitor-app
+    environment:
+      APP_KEY: ${APP_KEY}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./:/var/www/html:rw
+    expose:
+      - "9000:9000"
+    depends_on:
+      uptime-monitor-db:
+        condition: service_healthy
+    networks:
+      - appnet
+    restart: unless-stopped
+    command: >
+      sh -c "
+      /usr/local/bin/wait-for-db.sh &&
+      php artisan migrate --force &&
+      php artisan db:seed --force &&
+      php-fpm -F
+      "
+
+  uptime-monitor-db:
+    image: mysql:8.0
+    container_name: uptime-monitor-db
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks:
+      - appnet
+
+volumes:
+  db_data:
+
+networks:
+  appnet:
+    driver: bridge

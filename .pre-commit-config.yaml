@@ -1,0 +1,58 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+  # Lint Dockerfiles
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.14.0
+    hooks:
+      - id: hadolint-docker
+        files: ^Dockerfile$
+
+  # Secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+
+  # Terraform formatting and validation
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.102.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: terraform_tflint
+
+  # Local Docker build test and Trivy scan
+  - repo: local
+    hooks:
+      - id: docker-build-test
+        name: Docker Build Test
+        entry: docker build -t test-build .
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      - id: trivy-scan
+        name: Trivy Docker Image Scan
+        entry: trivy image --exit-code 1 --severity CRITICAL test-build
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      - id: trivy-filesystem
+        name: Trivy Filesystem Scan
+        entry: trivy fs --exit-code 0 --severity HIGH,CRITICAL --skip-dirs vendor --skip-files vendor/laravel/pint/builds/pint .
+        language: system
+        pass_filenames: false

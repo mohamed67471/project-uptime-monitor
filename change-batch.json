@@ -1,0 +1,11 @@
+{
+  "Changes": [{
+    "Action": "CREATE",
+    "ResourceRecordSet": {
+      "Name": "_13207c6c50c4c45151799745acc33467.tm.mohamed-uptime.com.",
+      "Type": "CNAME",
+      "TTL": 300,
+      "ResourceRecords": [{"Value": "_d216e6521dc68e589a3671bd21a037d0.xlfgrmvvlj.acm-validations.aws."}]
+    }
+  }]
+}

@@ -1,0 +1,146 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read                                               # for actions/checkout
+  id-token: write                                        # for oicd role assumption
+  security-events: write                                  # need for trivy scan
+
+env:
+  AWS_REGION: eu-west-2
+  ECR_REPOSITORY: uptime-monitor
+  ECS_CLUSTER: uptime-monitor-production-cluster
+  ECS_SERVICE: uptime-monitor-production-service
+  CONTAINER_NAME: uptime-monitor-production
+
+jobs:
+  build-and-deploy:
+    name: Build, Scan, and Deploy
+    runs-on: ubuntu-latest
+# testing application before deploying
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+
+      - name: Run composer install
+        run: composer install -n --prefer-dist
+
+      - name: Prepare Laravel Application
+        run: cp .env.ci .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Run tests
+        run: php artisan test --parallel
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build the Docker image
+      - name: Build Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+
+      # Scan ECR image for vulnerabilities using Trivy
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'                        # do not fail the build on vulnerabilities on report
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: run Trivy in table format
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Push Docker image to Amazon ECR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'        # only push to ecr on main branch
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Download task definifition
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition uptime-monitor-production-task \
+            --query taskDefinition > task-definition.json
+
+      # update task definition with new image
+      - name: update task definition with new image
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      # deploy to ecs
+      - name: Deploy to Amazon ECS service
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # deployment summary
+      - name: Deployment summary
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo " " >> $GITHUB_STEP_SUMMARY
+          echo "Deployed image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "ECR Repository: ${{ env.ECR_REPOSITORY }}" >> $GITHUB_STEP_SUMMARY
+          echo "ECS Service: ${{ env.ECS_SERVICE }}" >> $GITHUB_STEP_SUMMARY
+          echo "ECS Cluster: ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
+          echo "region: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo " " >> $GITHUB_STEP_SUMMARY
+          echo "view your app at https://tm.mohamed-uptime.com" >> $GITHUB_STEP_SUMMARY

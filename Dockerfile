@@ -41,6 +41,10 @@ RUN set -eux; \
 
 # PHP-FPM to listen on localhost:9001 (so Nginx can use port 9000)
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
+RUN touch /usr/local/etc/php/conf.d/docker-php-errors.ini \
+ && echo "error_log = /dev/stderr" >> /usr/local/etc/php/conf.d/docker-php-errors.ini \
+ && echo "log_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini \
+ && echo "display_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini
 
 # Copy Nginx config
 COPY nginx/nginx.conf /etc/nginx/nginx.conf

@@ -3,7 +3,6 @@ set -e
 
 echo "Starting container setup..."
 
-# Ensure we are in the app directory
 cd /var/www/html
 echo "Current directory: $(pwd)"
 ls -la
@@ -23,30 +22,33 @@ fi
 
 # Test Laravel
 echo "Testing Laravel..."
-php artisan --version || echo "Laravel command failed!"
+php artisan --version
 
 # Check PHP extensions
 echo "Checking PHP extensions..."
 for ext in pdo_mysql mbstring tokenizer xml curl openssl; do
-    php -m | grep -q "$ext" || echo "Missing PHP extension: $ext"
+    if ! php -m | grep -q "$ext"; then
+        echo "Missing PHP extension: $ext"
+        exit 1
+    fi
 done
 
 # Clear and cache Laravel configs
 echo "Clearing caches..."
-php artisan config:clear || echo "Config clear failed"
-php artisan cache:clear || echo "Cache clear failed"
-php artisan view:clear || echo "View clear failed"
+php artisan config:clear
+php artisan cache:clear
+php artisan view:clear
 
 echo "Caching config..."
-php artisan config:cache || echo "Config cache failed!"
+php artisan config:cache
 
 # Test DB connection
 echo "Testing database connection..."
-php artisan migrate:status || echo "Database connection failed!"
+php artisan migrate:status
 
 # Generate APP_KEY if missing
 echo "Generating app key if missing..."
-php artisan key:generate --force || echo "Key generation failed"
+php artisan key:generate --force
 
 echo "Laravel setup complete!"
 

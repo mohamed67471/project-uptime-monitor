@@ -162,7 +162,7 @@ resource "aws_ecs_service" "app" {
   }
 
 
-  health_check_grace_period_seconds = 60
+  health_check_grace_period_seconds = 120 
 
   depends_on = [
     aws_iam_role_policy_attachment.ecs_task_execution

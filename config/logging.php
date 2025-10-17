@@ -80,7 +80,8 @@ return [
             'emoji' => ':boom:',
             'level' => env('LOG_LEVEL', 'critical'),
             'replace_placeholders' => true,
-        ],
+            'channels' => ['single', 'stderr'],
+] ,
 
         'papertrail' => [
             'driver' => 'monolog',

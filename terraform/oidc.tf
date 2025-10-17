@@ -34,7 +34,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:mohamed410671/project-uptime-monitor:*"
+            "token.actions.githubusercontent.com:sub" = "repo:mohamed67471/project-uptime-monitor:*"
           }
         }
       }

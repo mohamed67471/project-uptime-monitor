@@ -36,18 +36,9 @@ done
 echo "Waiting for database connection..."
 timeout 30 bash -c 'until php artisan migrate:status >/dev/null 2>&1; do echo "Waiting for database..."; sleep 2; done' || echo "Database not ready, continuing anyway..."
 
-# Clear and cache Laravel configs (non-blocking)
-echo "Clearing caches..."
-php artisan config:clear || echo "Config clear failed, continuing..."
-php artisan cache:clear || echo "Cache clear failed, continuing..."
-php artisan view:clear || echo "View clear failed, continuing..."
-
-echo "Caching config..."
-php artisan config:cache || echo "Config cache failed, continuing..."
-
-# Generate APP_KEY if missing (non-blocking)
-echo "Generating app key if missing..."
-php artisan key:generate --force || echo "Key generation failed, continuing..."
+# Skip Laravel commands that might fail during startup
+echo "Skipping Laravel cache operations during container startup..."
+echo "These will be handled by the application when it's ready"
 
 echo "Laravel setup complete!"
 

@@ -35,16 +35,16 @@ done
 
 # Clear and cache Laravel configs
 echo "Clearing caches..."
-php artisan config:clear
-php artisan cache:clear
-php artisan view:clear
+php artisan config:clear || echo "Config clear failed, continuing..."
+php artisan cache:clear || echo "Cache clear failed, continuing..."
+php artisan view:clear || echo "View clear failed, continuing..."
 
 echo "Caching config..."
-php artisan config:cache
+php artisan config:cache || echo "Config cache failed, continuing..."
 
 # Test DB connection
 echo "Testing database connection..."
-php artisan migrate:status
+php artisan migrate:status || echo "Database connection test failed, but continuing..."
 
 # Generate APP_KEY if missing
 echo "Generating app key if missing..."

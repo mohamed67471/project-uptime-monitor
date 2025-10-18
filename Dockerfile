@@ -66,7 +66,7 @@ RUN cd /var/www/html && \
 
 # Build Vite assets for production
 RUN cd /var/www/html && \
-    npm ci --only=production && \
+    npm ci --omit=dev && \
     npm run build && \
     rm -rf node_modules
 

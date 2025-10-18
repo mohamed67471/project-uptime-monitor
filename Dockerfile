@@ -32,12 +32,15 @@ RUN set -eux; \
         $PHPIZE_DEPS gcc g++ make autoconf musl-dev re2c pkgconf; \
     apk add --no-cache \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-dev mysql-client \
-        tzdata bash curl git nodejs npm \
+        tzdata bash curl git \
         nginx supervisor; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl; \
     apk del .build-deps; \
     rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
+
+# Install Node.js and npm separately
+RUN apk add --no-cache nodejs npm
 
 # PHP-FPM to listen on localhost:9001 (so Nginx can use port 9000)
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf

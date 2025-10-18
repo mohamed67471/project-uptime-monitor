@@ -36,9 +36,18 @@ done
 echo "Waiting for database connection..."
 timeout 30 bash -c 'until php artisan migrate:status >/dev/null 2>&1; do echo "Waiting for database..."; sleep 2; done' || echo "Database not ready, continuing anyway..."
 
-# Skip Laravel commands that might fail during startup
-echo "Skipping Laravel cache operations during container startup..."
-echo "These will be handled by the application when it's ready"
+# Essential Laravel setup (non-blocking)
+echo "Setting up Laravel..."
+php artisan config:clear || echo "Config clear failed, continuing..."
+php artisan view:clear || echo "View clear failed, continuing..."
+
+# Only generate key if APP_KEY is not set
+if [ -z "$APP_KEY" ]; then
+    echo "APP_KEY not set, generating..."
+    php artisan key:generate --force || echo "Key generation failed, continuing..."
+else
+    echo "APP_KEY already set from environment"
+fi
 
 echo "Laravel setup complete!"
 

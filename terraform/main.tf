@@ -127,7 +127,7 @@ module "ecs" {
     
     # Cache and Session
     CACHE_DRIVER     = "file"
-    SESSION_DRIVER   = "file"
+    SESSION_DRIVER   = "cookie"
     SESSION_LIFETIME = "120"
     
     # Queue

@@ -107,15 +107,36 @@ module "ecs" {
   log_retention_days   = 30
 
   environment_variables = {
+    APP_NAME    = "Uptime Monitor"
     APP_ENV     = var.environment
     APP_DEBUG   = "false"
     APP_URL     = "https://${var.domain_name}"
     ASSET_URL   = "https://${var.domain_name}"
     FORCE_HTTPS = "true"
-    DB_HOST     = module.rds.db_endpoint
-    DB_PORT     = "3306"
-    DB_DATABASE = var.database_name
-    DB_USERNAME = var.database_username
+    
+    # Database
+    DB_CONNECTION = "mysql"
+    DB_HOST       = module.rds.db_endpoint
+    DB_PORT       = "3306"
+    DB_DATABASE   = var.database_name
+    DB_USERNAME   = var.database_username
+    
+    # Logging
+    LOG_CHANNEL = "stderr"
+    LOG_LEVEL   = "debug"
+    
+    # Cache and Session
+    CACHE_DRIVER     = "file"
+    SESSION_DRIVER   = "file"
+    SESSION_LIFETIME = "120"
+    
+    # Queue
+    QUEUE_CONNECTION = "sync"
+    
+    # Mail
+    MAIL_MAILER = "smtp"
+    MAIL_HOST   = "localhost"
+    MAIL_PORT   = "1025"
   }
 
   secrets = {

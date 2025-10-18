@@ -12,13 +12,12 @@ echo "Setting permissions..."
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 
-# Check .env file
-if [ -f .env ]; then
-    echo ".env file exists"
-    grep APP_KEY .env || echo "APP_KEY not set"
-else
-    echo ".env file missing!"
-fi
+# Check environment variables (Laravel will use these instead of .env file)
+echo "Checking environment variables..."
+echo "APP_ENV: ${APP_ENV:-not set}"
+echo "APP_KEY: ${APP_KEY:-not set}"
+echo "DB_HOST: ${DB_HOST:-not set}"
+echo "DB_DATABASE: ${DB_DATABASE:-not set}"
 
 # Test Laravel
 echo "Testing Laravel..."

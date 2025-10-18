@@ -37,7 +37,7 @@ RUN set -eux; \
 # Install PHP extensions, runtime deps, Nginx, and Supervisor
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS gcc g++ make autoconf musl-dev re2c pkgconf; \
+        $PHPIZE_DEPS; \
     apk add --no-cache \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-dev mysql-client \
         tzdata bash curl git \
@@ -69,15 +69,14 @@ COPY --from=composer-build --chown=www-data:www-data /app/vendor /var/www/html/v
 # Copy built assets from assets-build stage
 COPY --from=assets-build --chown=www-data:www-data /app/public/build /var/www/html/public/build
 
-# IMPORTANT: Regenerate composer autoload with app files present
+# Copy Composer from build stage and regenerate autoload
+COPY --from=composer-build /usr/local/bin/composer /usr/local/bin/composer
 RUN cd /var/www/html && \
-    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer && \
-    composer dump-autoload --optimize --no-dev && \
-    rm /usr/local/bin/composer
+    composer dump-autoload --optimize --no-dev
 
 # Clear Laravel caches (as root, before USER www-data)
-RUN php /var/www/html/artisan config:clear || true && \
-    php /var/www/html/artisan cache:clear || true
+RUN php /var/www/html/artisan config:clear && \
+    php /var/www/html/artisan cache:clear
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh

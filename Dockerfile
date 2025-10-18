@@ -16,7 +16,15 @@ COPY composer.json composer.lock ./
 # Install dependencies without running scripts
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --classmap-authoritative --no-scripts
 
-# Stage 2: Final image with Nginx + PHP-FPM (Alpine)
+# Stage 2: assets build (Node.js)
+FROM node:20-alpine AS assets-build
+WORKDIR /app
+COPY package*.json ./
+COPY resources ./resources
+COPY vite.config.js ./
+RUN npm install && npm run build
+
+# Stage 3: Final image with Nginx + PHP-FPM (Alpine)
 FROM php:8.2-fpm-alpine
 
 WORKDIR /var/www/html
@@ -26,7 +34,7 @@ RUN set -eux; \
     if ! getent group www-data >/dev/null 2>&1; then addgroup -g 1000 -S www-data; fi; \
     if ! id -u www-data >/dev/null 2>&1; then adduser -u 1000 -S -G www-data www-data; fi
 
-# Install PHP extensions, runtime deps, Nginx, Supervisor, and Node.js
+# Install PHP extensions, runtime deps, Nginx, and Supervisor
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS gcc g++ make autoconf musl-dev re2c pkgconf; \
@@ -38,9 +46,6 @@ RUN set -eux; \
     docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl; \
     apk del .build-deps; \
     rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
-
-# Install Node.js and npm separately
-RUN apk add --no-cache nodejs npm
 
 # PHP-FPM to listen on localhost:9001 (so Nginx can use port 9000)
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
@@ -61,17 +66,14 @@ COPY --chown=www-data:www-data . /var/www/html
 # Copy vendor from composer stage
 COPY --from=composer-build --chown=www-data:www-data /app/vendor /var/www/html/vendor
 
+# Copy built assets from assets-build stage
+COPY --from=assets-build --chown=www-data:www-data /app/public/build /var/www/html/public/build
+
 # IMPORTANT: Regenerate composer autoload with app files present
 RUN cd /var/www/html && \
     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer && \
     composer dump-autoload --optimize --no-dev && \
     rm /usr/local/bin/composer
-
-# Build Vite assets for production
-RUN cd /var/www/html && \
-    npm install --omit=dev && \
-    npm run build && \
-    rm -rf node_modules
 
 # Clear Laravel caches (as root, before USER www-data)
 RUN php /var/www/html/artisan config:clear || true && \

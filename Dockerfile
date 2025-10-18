@@ -26,13 +26,13 @@ RUN set -eux; \
     if ! getent group www-data >/dev/null 2>&1; then addgroup -g 1000 -S www-data; fi; \
     if ! id -u www-data >/dev/null 2>&1; then adduser -u 1000 -S -G www-data www-data; fi
 
-# Install PHP extensions, runtime deps, Nginx, and Supervisor
+# Install PHP extensions, runtime deps, Nginx, Supervisor, and Node.js
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS gcc g++ make autoconf musl-dev re2c pkgconf; \
     apk add --no-cache \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-dev mysql-client \
-        tzdata bash curl git \
+        tzdata bash curl git nodejs npm \
         nginx supervisor; \
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
     docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl; \
@@ -63,6 +63,12 @@ RUN cd /var/www/html && \
     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer && \
     composer dump-autoload --optimize --no-dev && \
     rm /usr/local/bin/composer
+
+# Build Vite assets for production
+RUN cd /var/www/html && \
+    npm ci --only=production && \
+    npm run build && \
+    rm -rf node_modules
 
 # Clear Laravel caches (as root, before USER www-data)
 RUN php /var/www/html/artisan config:clear || true && \

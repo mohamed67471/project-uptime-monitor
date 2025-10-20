@@ -43,3 +43,9 @@ variable "db_subnet_group_name" {
   type        = string
   description = "Name of the DB subnet group from VPC module"
 }
+
+variable "skip_final_snapshot" {
+  type        = bool
+  description = "Whether to skip final snapshot on deletion"
+  default     = false
+}

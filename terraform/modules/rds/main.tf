@@ -68,13 +68,13 @@ resource "aws_db_instance" "main" {
   apply_immediately          = false # Wait for maintenance window
 
   # Deletion settings for easy teardown
-  skip_final_snapshot = true  # Demo only
-  deletion_protection = false # demo only
+    # Demo only
+ 
 
-  # PRODUCTION would be:
-  # skip_final_snapshot = false
-  # final_snapshot_identifier = "${var.name_prefix}-final-${timestamp()}"
-  # deletion_protection = true
+  
+   skip_final_snapshot = false
+final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.name_prefix}-final-${replace(timestamp(), ":", "-")}"
+  deletion_protection = true
 
   tags = {
     Name        = "${var.name_prefix}-mysql"

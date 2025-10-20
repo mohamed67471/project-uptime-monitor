@@ -34,6 +34,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        
+      - name: Convert all shell scripts to LF
+        run: |
+          find . -name "*.sh" -exec dos2unix {} \; || true
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2

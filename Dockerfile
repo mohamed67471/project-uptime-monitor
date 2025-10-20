@@ -24,77 +24,95 @@ COPY resources ./resources
 COPY vite.config.js ./
 RUN npm install && npm run build
 
-# Stage 3: Final image with Nginx + PHP-FPM (Alpine)
+# Stage 3: Final image with PHP-FPM + Nginx (Alpine)
 FROM php:8.2-fpm-alpine
 
 WORKDIR /var/www/html
 
 # Create www-data user/group
 RUN set -eux; \
-    if ! getent group www-data >/dev/null 2>&1; then addgroup -g 1000 -S www-data; fi; \
+    if ! getent group www-data >/dev/null; then addgroup -g 1000 -S www-data; fi; \
     if ! id -u www-data >/dev/null 2>&1; then adduser -u 1000 -S -G www-data www-data; fi
 
-# Install PHP extensions, runtime deps, Nginx, and Supervisor
+# Install runtime libraries and build dependencies
 RUN set -eux; \
     apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS; \
-    apk add --no-cache \
-        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-dev mysql-client \
-        tzdata bash curl git \
-        nginx supervisor; \
+        $PHPIZE_DEPS \
+        libpng-dev \
+        libjpeg-turbo-dev \
+        freetype-dev \
+        oniguruma-dev \
+        mariadb-dev \
+        bash \
+        curl \
+        git \
+        tzdata \
+        nginx \
+        supervisor; \
+    \
+    # Configure GD properly
     docker-php-ext-configure gd --with-freetype --with-jpeg; \
-    docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl; \
+    \
+    # Compile PHP extensions
+    docker-php-ext-install -j"$(nproc)" \
+        pdo_mysql \
+        mysqli \
+        gd \
+        exif \
+        bcmath \
+        pcntl; \
+    \
+    # Cleanup build dependencies
     apk del .build-deps; \
     rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
-# PHP-FPM to listen on localhost:9001 (so Nginx can use port 9000)
+# Verify extensions (optional,)
+RUN php -m | grep -E 'PDO|pdo_mysql|mysqli|gd|bcmath|pcntl'
+
+# PHP-FPM config: listen on 127.0.0.1:9001 (so Nginx uses 9000)
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
-RUN touch /usr/local/etc/php/conf.d/docker-php-errors.ini \
- && echo "error_log = /dev/stderr" >> /usr/local/etc/php/conf.d/docker-php-errors.ini \
+
+# PHP error logging to stderr
+RUN echo "error_log = /dev/stderr" > /usr/local/etc/php/conf.d/docker-php-errors.ini \
  && echo "log_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini \
  && echo "display_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini
 
-# Copy Nginx config
+# Copy Nginx & Supervisor configs
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
-
-# Copy Supervisor config
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy application files FIRST
+# Copy app files
 COPY --chown=www-data:www-data . /var/www/html
 
-# Copy vendor from composer stage
+# Copy vendor and assets from previous stages
 COPY --from=composer-build --chown=www-data:www-data /app/vendor /var/www/html/vendor
-
-# Copy built assets from assets-build stage
 COPY --from=assets-build --chown=www-data:www-data /app/public/build /var/www/html/public/build
 
-# Copy Composer from build stage and regenerate autoload
+# Copy composer binary
 COPY --from=composer-build /usr/local/bin/composer /usr/local/bin/composer
-RUN cd /var/www/html && \
-    composer dump-autoload --optimize --no-dev
 
-# Clear Laravel caches (as root, before USER www-data)
-RUN php /var/www/html/artisan config:clear && \
-    php /var/www/html/artisan cache:clear
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+# Regenerate optimized autoload
+RUN cd /var/www/html && composer dump-autoload --optimize --no-dev
 
+# Clear Laravel caches
+RUN php /var/www/html/artisan config:clear && php /var/www/html/artisan cache:clear
 
-# Ensure writable dirs for Laravel
+# Ensure writable directories
 RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Create nginx directories and set permissions
+# Create nginx directories
 RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx \
     && chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx
 
 EXPOSE 9000
 
-# Run as root so supervisor can manage both nginx and php-fpm
+# Copy entrypoints
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+
 USER root
 
-# Use entrypoint to run migrations, then start supervisor
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -103,6 +103,6 @@ COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
 
 USER root
-
+#
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -19,16 +19,10 @@ env:
   ECS_CLUSTER: uptime-monitor-production-cluster
   ECS_SERVICE: uptime-monitor-production-service
   CONTAINER_NAME: uptime-monitor-production
-  DB_CONNECTION: mysql
-  DB_HOST: ${{ secrets.CI_DB_HOST }}
-  DB_PORT: ${{ secrets.CI_DB_PORT }}
-  DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-  DB_USERNAME: ${{ secrets.CI_DB_USER }}
-  DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
 
 jobs:
   build-and-deploy:
-    name: Build, Scan, and Deploy
+    name: Build and Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -51,13 +45,16 @@ jobs:
 
       - name: Prepare Laravel Application
         run: cp .env.ci .env
+        env:
+          DB_CONNECTION: ${{ secrets.CI_DB_CONNECTION }}
+          DB_HOST: ${{ secrets.CI_DB_HOST }}
+          DB_PORT: ${{ secrets.CI_DB_PORT }}
+          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.CI_DB_USER }}
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
 
       - name: Generate application key
         run: php artisan key:generate
-
-      - name: Run tests
-        run: php artisan test || echo "Tests failed but continuing deployment"
-        continue-on-error: true
         env:
           DB_CONNECTION: ${{ secrets.CI_DB_CONNECTION }}
           DB_HOST: ${{ secrets.CI_DB_HOST }}
@@ -94,7 +91,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: true
 
-      - name: run Trivy in table format
+      - name: Run Trivy in table format
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}

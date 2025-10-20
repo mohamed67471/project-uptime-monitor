@@ -50,7 +50,7 @@ RUN apk add --no-cache --virtual .build-deps \
     \
     # Configure GD properly
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
+    && docker-php-ext-install -j"$(nproc)" PDO pdo_mysql mysqli gd exif bcmath pcntl \
     \
     # Cleanup build dependencies
     && apk del .build-deps \

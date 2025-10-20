@@ -2,18 +2,13 @@
 FROM php:8.2-cli AS composer-build
 WORKDIR /app
 
-# Install minimal system tools for Composer
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git unzip zip curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Install composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# Copy composer files
 COPY composer.json composer.lock ./
-
-# Install dependencies without running scripts
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --classmap-authoritative --no-scripts
 
 # Stage 2: assets build (Node.js)
@@ -31,42 +26,37 @@ WORKDIR /var/www/html
 
 # Create www-data user/group
 RUN set -eux; \
-    if ! getent group www-data >/dev/null; then addgroup -g 1000 -S www-data; fi; \
-    if ! id -u www-data >/dev/null 2>&1; then adduser -u 1000 -S -G www-data www-data; fi
+    addgroup -g 1000 -S www-data || true; \
+    adduser -u 1000 -S -G www-data www-data || true
 
 # Install runtime libraries and build dependencies
-RUN set -eux; \
-    apk add --no-cache --virtual .build-deps \
+RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libpng-dev \
         libjpeg-turbo-dev \
         freetype-dev \
         oniguruma-dev \
         mariadb-dev \
+    && apk add --no-cache \
         bash \
         curl \
         git \
         tzdata \
         nginx \
-        supervisor; \
+        supervisor \
+        libpng \
+        libjpeg-turbo \
+        freetype \
     \
     # Configure GD properly
-    docker-php-ext-configure gd --with-freetype --with-jpeg; \
-    \
-    # Compile PHP extensions
-    docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql \
-        mysqli \
-        gd \
-        exif \
-        bcmath \
-        pcntl; \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
     \
     # Cleanup build dependencies
-    apk del .build-deps; \
-    rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
+    && apk del .build-deps \
+    && rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
-# Verify extensions (optional,)
+# Verify extensions
 RUN php -m | grep -E 'PDO|pdo_mysql|mysqli|gd|bcmath|pcntl'
 
 # PHP-FPM config: listen on 127.0.0.1:9001 (so Nginx uses 9000)

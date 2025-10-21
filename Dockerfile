@@ -40,31 +40,38 @@ RUN set -eux; \
 # Install dependencies and PHP extensions
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
-        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-connector-c-dev \
+        libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev \
     && apk add --no-cache \
-        bash curl git tzdata nginx supervisor libpng libjpeg-turbo freetype mariadb-connector-c \
+        bash curl git tzdata nginx supervisor libpng libjpeg-turbo freetype oniguruma \
+        mariadb-connector-c mysql-client netcat-openbsd \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
-    && echo "extension=pdo.so" > /usr/local/etc/php/conf.d/00-pdo.ini \
+    && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl opcache \
+    && pecl install redis && docker-php-ext-enable redis \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
-# Verify PDO extensions
-RUN php -m | grep -E 'PDO|pdo_mysql|mysqli' || { echo "PDO extensions missing!"; exit 1; }
+# Verify PDO extensions are properly loaded
+RUN php -r "if (!extension_loaded('pdo')) { echo 'PDO extension missing!'; exit(1); }" \
+ && php -r "if (!extension_loaded('pdo_mysql')) { echo 'PDO MySQL extension missing!'; exit(1); }" \
+ && echo "✓ PDO extensions verified"
 
 # PHP-FPM configuration
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
 
-# PHP error logging
+# PHP configuration
 RUN { \
   echo 'error_log = /dev/stderr'; \
   echo 'log_errors = On'; \
   echo 'display_errors = Off'; \
-} > /usr/local/etc/php/conf.d/docker-php-errors.ini
+  echo 'memory_limit = 256M'; \
+  echo 'upload_max_filesize = 64M'; \
+  echo 'post_max_size = 64M'; \
+  echo 'max_execution_time = 300'; \
+} > /usr/local/etc/php/conf.d/custom.ini
 
 # Copy Nginx & Supervisor configs
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
-COPY supervisor/supervisord.conf /etc/supervisord.conf
+COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Copy app files
 COPY . /var/www/html
@@ -77,11 +84,23 @@ RUN chmod +x /usr/local/bin/composer
 RUN chown -R www-data:www-data /var/www/html \
  && find /var/www/html -type f -exec chmod 644 {} \; \
  && find /var/www/html -type d -exec chmod 755 {} \; \
- && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+ && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache \
+ && chmod +x /var/www/html/artisan
 
-# Optimize Laravel
+# Create necessary Laravel directories
+RUN mkdir -p /var/www/html/storage/framework/views \
+    /var/www/html/storage/framework/cache \
+    /var/www/html/storage/framework/sessions \
+    /var/www/html/storage/logs
+
+# Optimize Laravel (run as www-data to avoid permission issues)
+USER www-data
 RUN cd /var/www/html && composer dump-autoload --optimize --no-dev
-RUN php artisan config:clear || true && php artisan cache:clear || true
+RUN php artisan config:clear || true \
+ && php artisan cache:clear || true \
+ && php artisan view:clear || true
+
+USER root
 
 # Create nginx directories
 RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx \
@@ -101,7 +120,11 @@ RUN apk add --no-cache dos2unix \
  && chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
  && apk del dos2unix
 
-USER root
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD php /var/www/html/artisan inspire > /dev/null 2>&1 || exit 1
+
+USER www-data
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

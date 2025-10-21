@@ -19,17 +19,19 @@ COPY resources ./resources
 COPY vite.config.js ./
 RUN npm install && npm run build
 
-# Stage 3: Final image with PHP-FPM + Nginx (Alpine)
+# Stage 3: Final image (PHP-FPM + Nginx)
 FROM php:8.2-fpm-alpine
 
 WORKDIR /var/www/html
 
-# Create www-data user/group
+# Create www-data user with explicit UID/GID
 RUN set -eux; \
-    addgroup -g 1000 -S www-data || true; \
-    adduser -u 1000 -S -G www-data www-data || true
+    delgroup www-data 2>/dev/null || true; \
+    deluser www-data 2>/dev/null || true; \
+    addgroup -g 1000 -S www-data; \
+    adduser -u 1000 -D -S -G www-data www-data
 
-# Install runtime libraries and build dependencies
+# Install runtime dependencies and PHP extensions
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libpng-dev \
@@ -47,62 +49,64 @@ RUN apk add --no-cache --virtual .build-deps \
         libpng \
         libjpeg-turbo \
         freetype \
-    \
-    # Configure GD properly
+        mariadb-connector-c \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    \
-    # Install extensions
     && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
-    \
-    # Cleanup build dependencies
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
-# Verify extensions
-RUN php -m | grep -E 'pdo|pdo_mysql|mysqli|gd|bcmath|pcntl'
+# CRITICAL: Verify extensions are installed
+RUN php -m | grep -E 'PDO|pdo_mysql|mysqli' || { \
+        echo "FATAL: PDO extensions not found after installation!"; \
+        php -m; \
+        exit 1; \
+    }
 
-# PHP-FPM config: listen on 127.0.0.1:9001 (so Nginx uses 9000)
+# PHP-FPM configuration
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
 
-# PHP error logging to stderr
-RUN echo "error_log = /dev/stderr" > /usr/local/etc/php/conf.d/docker-php-errors.ini \
- && echo "log_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini \
- && echo "display_errors = On" >> /usr/local/etc/php/conf.d/docker-php-errors.ini
+# PHP error logging
+RUN { \
+        echo 'error_log = /dev/stderr'; \
+        echo 'log_errors = On'; \
+        echo 'display_errors = Off'; \
+    } > /usr/local/etc/php/conf.d/docker-php-errors.ini
 
 # Copy Nginx & Supervisor configs
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy app files
-COPY --chown=www-data:www-data . /var/www/html
+# Copy application files with root, then fix ownership
+COPY . /var/www/html
 
-# Copy vendor and assets from previous stages
-COPY --from=composer-build --chown=www-data:www-data /app/vendor /var/www/html/vendor
-COPY --from=assets-build --chown=www-data:www-data /app/public/build /var/www/html/public/build
-
-# Copy composer binary
+# Copy vendor and assets from build stages
+COPY --from=composer-build /app/vendor /var/www/html/vendor
+COPY --from=assets-build /app/public/build /var/www/html/public/build
 COPY --from=composer-build /usr/local/bin/composer /usr/local/bin/composer
 
-# Regenerate optimized autoload
+# Fix ALL ownership and permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && find /var/www/html -type f -exec chmod 644 {} \; \
+    && find /var/www/html -type d -exec chmod 755 {} \; \
+    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Regenerate autoload
 RUN cd /var/www/html && composer dump-autoload --optimize --no-dev
 
-# Clear Laravel caches
-RUN php /var/www/html/artisan config:clear && php /var/www/html/artisan cache:clear
-
-# Ensure writable directories
-RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+# Clear Laravel caches (with error handling)
+RUN php /var/www/html/artisan config:clear || true \
+    && php /var/www/html/artisan cache:clear || true
 
 # Create nginx directories
 RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx \
     && chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx
 
-EXPOSE 9000
-
-# Copy entrypoints
+# Copy entrypoint scripts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+
+EXPOSE 9000
 
 USER root
 

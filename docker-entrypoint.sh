@@ -1,5 +1,45 @@
-#!/bin/sh 
+!/bin/sh 
 set -e
+
+echo "CRITICAL: PHP Extension Verification"
+
+# Show PHP version
+echo "PHP Version:"
+php -v
+echo ""
+
+# Show configuration files being loaded
+echo "PHP Configuration Files:"
+php --ini
+echo ""
+
+# List ALL loaded extensions
+echo "All Loaded PHP Extensions:"
+php -m
+echo ""
+
+# Verify PDO specifically
+echo "Verifying PDO Extensions:"
+if php -m | grep -q "^PDO$"; then
+    echo "✓ PDO extension found"
+else
+    echo "✗ FATAL: PDO extension NOT found!"
+    echo ""
+    echo "PHP extension directory:"
+    php -i | grep "^extension_dir"
+    echo ""
+    echo "Contents of extension directory:"
+    ls -la $(php -i | grep "^extension_dir" | cut -d' ' -f3)
+    exit 1
+fi
+
+if php -m | grep -q "^pdo_mysql$"; then
+    echo "✓ pdo_mysql extension found"
+else
+    echo "✗ FATAL: pdo_mysql extension NOT found!"
+    exit 1
+fi
+
 echo "Starting Laravel container setup..."
 
 # Change to application directory
@@ -11,17 +51,16 @@ echo "Directory contents:"
 ls -la
 
 echo "Setting up permissions..."
-echo "=========================================="
+
 
 # Fix permissions for Laravel
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 echo "Permissions set successfully"
 
-echo ""
-echo "=========================================="
+
 echo "Checking environment variables..."
-echo "=========================================="
+
 
 # Check critical environment variables
 echo "APP_ENV: ${APP_ENV:-not set}"
@@ -32,10 +71,9 @@ echo "DB_PORT: ${DB_PORT:-not set}"
 echo "DB_DATABASE: ${DB_DATABASE:-not set}"
 echo "DB_USERNAME: ${DB_USERNAME:-not set}"
 
-echo ""
-echo "=========================================="
+
 echo "Testing Laravel installation..."
-echo "=========================================="
+# Test Laravel installation"
 
 php artisan --version || {
     echo "Laravel test failed!"
@@ -43,10 +81,8 @@ php artisan --version || {
 }
 echo "Laravel is ready"
 
-echo ""
-echo "=========================================="
+
 echo "Checking PHP extensions..."
-echo "=========================================="
 
 # Check required PHP extensions
 REQUIRED_EXTENSIONS="pdo pdo_mysql mbstring tokenizer xml ctype json bcmath curl openssl"

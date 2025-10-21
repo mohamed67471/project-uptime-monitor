@@ -88,13 +88,18 @@ EXPOSE 9000
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 
-# Install dos2unix and fix line endings
+USER root
+
+# Ensure scripts have LF endings and valid shebangs
 RUN apk add --no-cache dos2unix \
+ && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/docker-entrypoint.sh || true \
+ && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/wait-for-db.sh || true \
  && dos2unix /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
  && chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
  && apk del dos2unix
 
-USER root
+# Copy supervisor config to correct path
+COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

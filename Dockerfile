@@ -36,7 +36,7 @@ RUN apk add --no-cache --virtual .build-deps \
         libjpeg-turbo-dev \
         freetype-dev \
         oniguruma-dev \
-        mariadb-dev \
+        mariadb-connector-c-dev \
     && apk add --no-cache \
         bash \
         curl \
@@ -50,14 +50,16 @@ RUN apk add --no-cache --virtual .build-deps \
     \
     # Configure GD properly
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" PDO pdo_mysql mysqli gd exif bcmath pcntl \
+    \
+    # Install extensions
+    && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
     \
     # Cleanup build dependencies
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
 # Verify extensions
-RUN php -m | grep -E 'PDO|pdo_mysql|mysqli|gd|bcmath|pcntl'
+RUN php -m | grep -E 'pdo|pdo_mysql|mysqli|gd|bcmath|pcntl'
 
 # PHP-FPM config: listen on 127.0.0.1:9001 (so Nginx uses 9000)
 RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
@@ -103,6 +105,6 @@ COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
 
 USER root
-#
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -10,7 +10,7 @@ RUN apt-get update \
 # Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# Copy PHP dependencies
+# Copy PHP dependencies and install
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
@@ -28,7 +28,6 @@ RUN npm install && npm run build
 
 # Stage 3: Final image (PHP 8.1 FPM + Nginx)
 FROM php:8.1-fpm-alpine
-
 WORKDIR /var/www/html
 
 # Create www-data user
@@ -38,7 +37,7 @@ RUN set -eux; \
     addgroup -g 1000 -S www-data; \
     adduser -u 1000 -D -S -G www-data www-data
 
-# Install dependencies and PHP extensions for PHP 8.1
+# Install dependencies and PHP extensions
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev mariadb-connector-c-dev \
@@ -46,6 +45,7 @@ RUN apk add --no-cache --virtual .build-deps \
         bash curl git tzdata nginx supervisor libpng libjpeg-turbo freetype mariadb-connector-c \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo pdo_mysql mysqli gd exif bcmath pcntl \
+    && echo "extension=pdo.so" > /usr/local/etc/php/conf.d/00-pdo.ini \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 
@@ -93,7 +93,7 @@ EXPOSE 9000
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 
-# Ensure script has no BOM, convert CRLF -> LF, make executable
+# Ensure scripts have no BOM, convert CRLF -> LF, make executable
 RUN apk add --no-cache dos2unix \
  && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/docker-entrypoint.sh || true \
  && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/wait-for-db.sh || true \

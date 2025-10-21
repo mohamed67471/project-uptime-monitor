@@ -30,9 +30,7 @@ RUN npm install && npm run build
 FROM php:8.2-fpm-alpine
 WORKDIR /var/www/html
 
-# Create www-data user/group
-RUN addgroup -g 1000 -S www-data \
- && adduser -u 1000 -D -S -G www-data www-data
+# PHP-FPM image already has www-data user, so we use it directly
 
 # Install dependencies and PHP extensions
 RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
@@ -104,7 +102,7 @@ RUN apk add --no-cache dos2unix \
 # Copy supervisor config to correct path
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Run container as non-root user
+# Run container as www-data
 USER www-data
 
 # Entrypoint & CMD

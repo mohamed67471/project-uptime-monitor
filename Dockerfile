@@ -100,11 +100,17 @@ RUN php /var/www/html/artisan config:clear || true \
 # Create nginx directories
 RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx \
     && chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx
+ Install dos2unix to handle line endings
+RUN apk add --no-cache dos2unix
 
 # Copy entrypoint scripts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+
+# Fix line endings and set permissions
+RUN dos2unix /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
+      && apk del dos2unix
 
 EXPOSE 9000
 

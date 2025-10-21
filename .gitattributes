@@ -9,3 +9,43 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+# .gitattributes
+# Handle line endings automatically for files detected as text
+* text=auto
+
+# Blade, CSS, HTML, Markdown, PHP diffs
+*.blade.php diff=html
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php text eol=lf
+
+# Export ignore
+/.github export-ignore
+CHANGELOG.md export-ignore
+.styleci.yml export-ignore
+
+# Force LF line endings for shell scripts
+*.sh text eol=lf
+
+# Force LF for specific entrypoint scripts
+docker-entrypoint.sh text eol=lf
+wait-for-db.sh text eol=lf
+
+# Docker files
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Config files
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.conf text eol=lf
+*.env text eol=lf
+*.ini text eol=lf
+
+# Nginx config
+nginx.conf text eol=lf
+
+# Supervisor config
+supervisord.conf text eol=lf

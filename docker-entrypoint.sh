@@ -50,6 +50,14 @@ chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 log "Permissions set"
 
+# Extract host and port from DB_HOST
+DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
+DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
+DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
+
+log "DEBUG - Raw DB_HOST: $DB_HOST"
+log "DEBUG - Extracted host: $DB_HOST_ONLY, port: $DB_PORT_ONLY"
+
 # Create .env file from environment variables
 log "Creating .env file..."
 cat > .env << EOF
@@ -65,8 +73,8 @@ LOG_DEPRECATIONS_CHANNEL=null
 LOG_LEVEL=debug
 
 DB_CONNECTION=mysql
-DB_HOST=${DB_HOST}
-DB_PORT=3306
+DB_HOST=${DB_HOST_ONLY}
+DB_PORT=${DB_PORT_ONLY}
 DB_DATABASE=${DB_DATABASE:-uptime}
 DB_USERNAME=${DB_USERNAME:-admin}
 DB_PASSWORD=${DB_PASSWORD}
@@ -120,39 +128,32 @@ log ".env file created"
 
 # Debug database connection
 log "DEBUG - Database connection details:"
-echo "DB_HOST: $DB_HOST"
+echo "DB_HOST: $DB_HOST_ONLY"
+echo "DB_PORT: $DB_PORT_ONLY"
 echo "DB_USERNAME: $DB_USERNAME"
 echo "DB_DATABASE: $DB_DATABASE"
 echo "DB_PASSWORD length: ${#DB_PASSWORD} characters"
-
-# Extract host and port from DB_HOST
-DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
-DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
-DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
-
-log "DEBUG - Extracted host: $DB_HOST_ONLY, port: $DB_PORT_ONLY"
 
 # Test network connectivity first
 log "Testing network connectivity to database..."
 if nc -z "$DB_HOST_ONLY" "$DB_PORT_ONLY"; then
     log "✓ Network connection successful"
 else
-    log "✗ Network connection failed"
+    log "✗ Network connection failed to $DB_HOST_ONLY:$DB_PORT_ONLY"
     exit 1
 fi
-\$dsn = 'mysql:host=${DB_HOST_ONLY};port=${DB_PORT_ONLY};dbname=${DB_DATABASE}';
+
 # Test raw PHP database connection
 log "Testing PHP database connection..."
-php -r "
-
-try {
-    \$pdo = new PDO(\$dsn, '${DB_USERNAME}', '${DB_PASSWORD}');
-    echo 'SUCCESS: Raw database connection working\n';
-} catch (Exception \$e) {
-    echo 'ERROR: Raw connection failed: ' . \$e->getMessage() . '\n';
-    exit(1);
-}
-"
+php -r "\
+\$dsn = 'mysql:host=${DB_HOST_ONLY};port=${DB_PORT_ONLY};dbname=${DB_DATABASE}';\
+try {\
+    \$pdo = new PDO(\$dsn, '${DB_USERNAME}', '${DB_PASSWORD}');\
+    echo 'SUCCESS: Raw database connection working' . PHP_EOL;\
+} catch (Exception \$e) {\
+    echo 'ERROR: Raw connection failed: ' . \$e->getMessage() . PHP_EOL;\
+    exit(1);\
+}"
 
 # Test Laravel
 php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }
@@ -160,10 +161,6 @@ log "Laravel is ready"
 
 # Wait for database to be fully ready
 log "Waiting for database to be ready..."
-DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
-DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
-DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
-
 wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL" || exit 1
 
 # Test Laravel database authentication

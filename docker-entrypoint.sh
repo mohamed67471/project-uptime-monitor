@@ -68,60 +68,124 @@ DB_CONNECTION=mysql
 DB_HOST=${DB_HOST}
 DB_PORT=3306
 DB_DATABASE=${DB_DATABASE:-uptime}
-DB_USERNAME=${DB_USERNAME:-uptime_user}
+DB_USERNAME=${DB_USERNAME:-admin}
 DB_PASSWORD=${DB_PASSWORD}
 
-# ... rest of your .env content
+BROADCAST_DRIVER=log
+CACHE_DRIVER=file
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+
+MEMCACHED_HOST=127.0.0.1
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="Uptime Monitor"
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-2}
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_HOST=
+PUSHER_PORT=443
+PUSHER_SCHEME=https
+PUSHER_APP_CLUSTER=mt1
+
+VITE_APP_NAME="Uptime Monitor"
+VITE_PUSHER_APP_KEY=
+VITE_PUSHER_HOST=
+VITE_PUSHER_PORT=443
+VITE_PUSHER_SCHEME=https
+VITE_PUSHER_APP_CLUSTER=mt1
+
+TELEGRAM_NOTIFER_TOKEN=${TELEGRAM_NOTIFER_TOKEN:-}
 EOF
 
 log ".env file created"
 
-# Test Laravel
-if ! php artisan --version >/dev/null 2>&1; then
-    log "ERROR: Laravel test failed"
+# Debug database connection
+log "DEBUG - Database connection details:"
+echo "DB_HOST: $DB_HOST"
+echo "DB_USERNAME: $DB_USERNAME"
+echo "DB_DATABASE: $DB_DATABASE"
+echo "DB_PASSWORD length: ${#DB_PASSWORD} characters"
+
+# Test network connectivity first
+log "Testing network connectivity to database..."
+if nc -z "${DB_HOST}" 3306; then
+    log "✓ Network connection successful"
+else
+    log "✗ Network connection failed"
     exit 1
 fi
+
+# Test raw PHP database connection
+log "Testing PHP database connection..."
+php -r "
+\$dsn = 'mysql:host=${DB_HOST};port=3306;dbname=${DB_DATABASE}';
+try {
+    \$pdo = new PDO(\$dsn, '${DB_USERNAME}', '${DB_PASSWORD}');
+    echo 'SUCCESS: Raw database connection working\n';
+} catch (Exception \$e) {
+    echo 'ERROR: Raw connection failed: ' . \$e->getMessage() . '\n';
+    exit(1);
+}
+"
+
+# Test Laravel
+php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }
 log "Laravel is ready"
 
-# Wait for database
-log "Waiting for database..."
+# Wait for database to be fully ready
+log "Waiting for database to be ready..."
 DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
 DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
 DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
 
-if ! wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL"; then
-    exit 1
-fi
+wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL" || exit 1
 
-# Test database connection (POSIX-compliant)
-log "Testing database connection..."
+# Test Laravel database authentication
+log "Testing Laravel database authentication..."
 DB_MAX_TRIES=30
 i=1
 while [ $i -le $DB_MAX_TRIES ]; do
     if php artisan migrate:status >/dev/null 2>&1; then
+        log "✓ Laravel database authentication successful"
         break
     fi
     if [ $i -eq $DB_MAX_TRIES ]; then
-        log "ERROR: Database auth failed"
+        log "ERROR: Laravel database auth failed after $DB_MAX_TRIES attempts"
         exit 1
     fi
     log "Database auth attempt $i/$DB_MAX_TRIES failed, retrying..."
     i=$((i + 1))
     sleep 2
 done
-log "Database connected"
+
+log "Database connected and authenticated"
 
 # Run migrations
 log "Running migrations..."
-if ! php artisan migrate --force; then
-    log "WARNING: Migration failed"
-fi
+php artisan migrate --force || log "WARNING: Migration failed"
 
 # Run seeders
 log "Running seeders..."
-if ! php artisan db:seed --force; then
-    log "WARNING: Seeder failed"
-fi
+php artisan db:seed --force || log "WARNING: Seeder failed"
 
 # Cache optimization for production
 if [ "$APP_ENV" = "production" ]; then

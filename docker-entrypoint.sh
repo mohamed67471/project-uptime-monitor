@@ -143,17 +143,29 @@ else
     exit 1
 fi
 
-# Test raw PHP database connection
+# Test raw PHP database connection using a temporary file (more reliable)
 log "Testing PHP database connection..."
-php -r "\
-\$dsn = 'mysql:host=${DB_HOST_ONLY};port=${DB_PORT_ONLY};dbname=${DB_DATABASE}';\
-try {\
-    \$pdo = new PDO(\$dsn, '${DB_USERNAME}', '${DB_PASSWORD}');\
-    echo 'SUCCESS: Raw database connection working' . PHP_EOL;\
-} catch (Exception \$e) {\
-    echo 'ERROR: Raw connection failed: ' . \$e->getMessage() . PHP_EOL;\
-    exit(1);\
-}"
+cat > /tmp/test_db.php << 'ENDOFFILE'
+<?php
+$host = getenv('DB_HOST_ONLY');
+$port = getenv('DB_PORT_ONLY');
+$database = getenv('DB_DATABASE');
+$username = getenv('DB_USERNAME');
+$password = getenv('DB_PASSWORD');
+
+$dsn = "mysql:host=$host;port=$port;dbname=$database";
+
+try {
+    $pdo = new PDO($dsn, $username, $password);
+    echo "SUCCESS: Raw database connection working" . PHP_EOL;
+} catch (Exception $e) {
+    echo "ERROR: Raw connection failed: " . $e->getMessage() . PHP_EOL;
+    exit(1);
+}
+?>
+ENDOFFILE
+
+DB_HOST_ONLY="$DB_HOST_ONLY" DB_PORT_ONLY="$DB_PORT_ONLY" DB_DATABASE="$DB_DATABASE" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" php /tmp/test_db.php
 
 # Test Laravel
 php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }

@@ -125,19 +125,26 @@ echo "DB_USERNAME: $DB_USERNAME"
 echo "DB_DATABASE: $DB_DATABASE"
 echo "DB_PASSWORD length: ${#DB_PASSWORD} characters"
 
+# Extract host and port from DB_HOST
+DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
+DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
+DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
+
+log "DEBUG - Extracted host: $DB_HOST_ONLY, port: $DB_PORT_ONLY"
+
 # Test network connectivity first
 log "Testing network connectivity to database..."
-if nc -z "${DB_HOST}" 3306; then
+if nc -z "$DB_HOST_ONLY" "$DB_PORT_ONLY"; then
     log "✓ Network connection successful"
 else
     log "✗ Network connection failed"
     exit 1
 fi
-
+\$dsn = 'mysql:host=${DB_HOST_ONLY};port=${DB_PORT_ONLY};dbname=${DB_DATABASE}';
 # Test raw PHP database connection
 log "Testing PHP database connection..."
 php -r "
-\$dsn = 'mysql:host=${DB_HOST};port=3306;dbname=${DB_DATABASE}';
+
 try {
     \$pdo = new PDO(\$dsn, '${DB_USERNAME}', '${DB_PASSWORD}');
     echo 'SUCCESS: Raw database connection working\n';

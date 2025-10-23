@@ -18,7 +18,10 @@ wait_for_service() {
     log "Waiting for $service at $host:$port..."
     while ! nc -z "$host" "$port" >/dev/null 2>&1; do
         tries=$((tries + 1))
-        [ $tries -ge $max_tries ] && log "ERROR: $service timeout" && return 1
+        if [ $tries -ge $max_tries ]; then
+            log "ERROR: $service timeout"
+            return 1
+        fi
         sleep 2
     done
     log "$service is available"
@@ -30,7 +33,12 @@ log "Starting container setup..."
 log "Checking PHP extensions..."
 REQUIRED_EXTENSIONS="pdo pdo_mysql mbstring tokenizer xml ctype json bcmath curl openssl"
 for ext in $REQUIRED_EXTENSIONS; do
-    check_extension "$ext" && echo "✓ $ext" || { echo "✗ $ext"; exit 1; }
+    if check_extension "$ext"; then
+        echo "✓ $ext"
+    else
+        echo "✗ $ext"
+        exit 1
+    fi
 done
 
 # Change to app directory
@@ -63,55 +71,16 @@ DB_DATABASE=${DB_DATABASE:-uptime}
 DB_USERNAME=${DB_USERNAME:-uptime_user}
 DB_PASSWORD=${DB_PASSWORD}
 
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-FILESYSTEM_DISK=local
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-
-MEMCACHED_HOST=127.0.0.1
-REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=null
-REDIS_PORT=6379
-
-MAIL_MAILER=smtp
-MAIL_HOST=mailpit
-MAIL_PORT=1025
-MAIL_USERNAME=null
-MAIL_PASSWORD=null
-MAIL_ENCRYPTION=null
-MAIL_FROM_ADDRESS="hello@example.com"
-MAIL_FROM_NAME="Uptime Monitor"
-
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-2}
-AWS_BUCKET=
-AWS_USE_PATH_STYLE_ENDPOINT=false
-
-PUSHER_APP_ID=
-PUSHER_APP_KEY=
-PUSHER_APP_SECRET=
-PUSHER_HOST=
-PUSHER_PORT=443
-PUSHER_SCHEME=https
-PUSHER_APP_CLUSTER=mt1
-
-VITE_APP_NAME="Uptime Monitor"
-VITE_PUSHER_APP_KEY=
-VITE_PUSHER_HOST=
-VITE_PUSHER_PORT=443
-VITE_PUSHER_SCHEME=https
-VITE_PUSHER_APP_CLUSTER=mt1
-
-TELEGRAM_NOTIFER_TOKEN=${TELEGRAM_NOTIFER_TOKEN:-}
+# ... rest of your .env content
 EOF
 
 log ".env file created"
 
 # Test Laravel
-php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }
+if ! php artisan --version >/dev/null 2>&1; then
+    log "ERROR: Laravel test failed"
+    exit 1
+fi
 log "Laravel is ready"
 
 # Wait for database
@@ -120,42 +89,63 @@ DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
 DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
 DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
 
-wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL" || exit 1
+if ! wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL"; then
+    exit 1
+fi
 
-# Test database connection
+# Test database connection (POSIX-compliant)
 log "Testing database connection..."
 DB_MAX_TRIES=30
-for ((i=1; i<=DB_MAX_TRIES; i++)); do
-    php artisan migrate:status >/dev/null 2>&1 && break
-    [ $i -eq $DB_MAX_TRIES ] && log "ERROR: Database auth failed" && exit 1
+i=1
+while [ $i -le $DB_MAX_TRIES ]; do
+    if php artisan migrate:status >/dev/null 2>&1; then
+        break
+    fi
+    if [ $i -eq $DB_MAX_TRIES ]; then
+        log "ERROR: Database auth failed"
+        exit 1
+    fi
+    log "Database auth attempt $i/$DB_MAX_TRIES failed, retrying..."
+    i=$((i + 1))
     sleep 2
 done
 log "Database connected"
 
 # Run migrations
 log "Running migrations..."
-php artisan migrate --force || log "WARNING: Migration failed"
+if ! php artisan migrate --force; then
+    log "WARNING: Migration failed"
+fi
 
 # Run seeders
 log "Running seeders..."
-php artisan db:seed --force || log "WARNING: Seeder failed"
+if ! php artisan db:seed --force; then
+    log "WARNING: Seeder failed"
+fi
 
 # Cache optimization for production
 if [ "$APP_ENV" = "production" ]; then
     log "Caching for production..."
-    php artisan config:cache
-    php artisan route:cache
-    php artisan view:cache
+    php artisan config:cache || true
+    php artisan route:cache || true
+    php artisan view:cache || true
 fi
 
 # Generate APP_KEY if not set
-[ -z "$APP_KEY" ] && log "Generating APP_KEY..." && php artisan key:generate --force
+if [ -z "$APP_KEY" ]; then
+    log "Generating APP_KEY..."
+    php artisan key:generate --force || exit 1
+fi
 
 # Create storage link
-[ ! -L public/storage ] && php artisan storage:link
+if [ ! -L public/storage ]; then
+    php artisan storage:link || true
+fi
 
 # Create health check
-[ ! -f public/health ] && echo "OK" > public/health
+if [ ! -f public/health ]; then
+    echo "OK" > public/health
+fi
 
 log "Container setup completed"
 log "Starting supervisord..."

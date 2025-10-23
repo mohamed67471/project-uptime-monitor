@@ -1,341 +1,163 @@
 #!/bin/sh
 set -e
 
-echo "CRITICAL: PHP Extension Verification"
-
-# Function for consistent logging
+# Logging function
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Function to check extensions using PHP itself (most reliable)
+# Check PHP extension
 check_extension() {
-    local ext="$1"
-    php -r "if(extension_loaded('$ext')) exit(0); else exit(1);" >/dev/null 2>&1
+    php -r "if(extension_loaded('$1')) exit(0); else exit(1);" >/dev/null 2>&1
 }
 
-# Function to wait for service with timeout
+# Wait for service
 wait_for_service() {
-    local host="$1"
-    local port="$2"
-    local service="$3"
-    local max_tries=30
-    local tries=0
+    local host="$1" port="$2" service="$3" max_tries=30 tries=0
     
     log "Waiting for $service at $host:$port..."
-    
     while ! nc -z "$host" "$port" >/dev/null 2>&1; do
         tries=$((tries + 1))
-        if [ $tries -ge $max_tries ]; then
-            log "ERROR: $service connection timeout after $max_tries attempts"
-            return 1
-        fi
-        log "Attempt $tries/$max_tries - $service not ready yet..."
+        [ $tries -ge $max_tries ] && log "ERROR: $service timeout" && return 1
         sleep 2
     done
-    
-    log "$service is available at $host:$port"
-    return 0
+    log "$service is available"
 }
 
-# Show PHP version
-log "PHP Version:"
-php -v
-echo ""
+log "Starting container setup..."
 
-# Show configuration files being loaded
-log "PHP Configuration Files:"
-php --ini
-echo ""
-
-# List ALL loaded extensions with exact names for debugging
-log "All Loaded PHP Extensions (exact names):"
-php -m | while read line; do
-    echo "  $line"
+# Verify PHP extensions
+log "Checking PHP extensions..."
+REQUIRED_EXTENSIONS="pdo pdo_mysql mbstring tokenizer xml ctype json bcmath curl openssl"
+for ext in $REQUIRED_EXTENSIONS; do
+    check_extension "$ext" && echo "✓ $ext" || { echo "✗ $ext"; exit 1; }
 done
-echo ""
 
-# Verify PDO specifically with multiple methods
-log "Verifying PDO Extensions:"
-
-# Method 1: Using extension_loaded (most reliable)
-if check_extension "pdo"; then
-    echo "✓ PDO extension found (extension_loaded)"
-else
-    echo "✗ PDO extension NOT found (extension_loaded)"
-fi
-
-# Method 2: Using grep for visibility
-if php -m | grep -i -q "^pdo$"; then
-    echo "✓ PDO extension found (php -m)"
-else
-    echo "✗ PDO extension NOT found (php -m)"
-fi
-
-# Method 3: Using PHP code to list all PDO drivers
-echo "Available PDO drivers:"
-php -r "print_r(PDO::getAvailableDrivers());" 2>/dev/null || echo "PDO not available"
-echo ""
-
-# Final PDO validation
-if check_extension "pdo" && php -r "class_exists('PDO') || exit(1);" 2>/dev/null; then
-    echo "✓ PDO extension verified and functional"
-else
-    echo "✗ FATAL: PDO extension NOT functional!"
-    echo ""
-    echo "PHP extension directory:"
-    php -i | grep "^extension_dir" | head -1
-    echo ""
-    echo "Contents of extension directory:"
-    ls -la $(php -i | grep "^extension_dir" | cut -d' ' -f3) 2>/dev/null || echo "Cannot list extension directory"
-    exit 1
-fi
-
-# Verify pdo_mysql
-if check_extension "pdo_mysql"; then
-    echo "✓ pdo_mysql extension found"
-else
-    echo "✗ FATAL: pdo_mysql extension NOT found!"
-    exit 1
-fi
-
-log "Starting Laravel container setup..."
-
-# Change to application directory
+# Change to app directory
 cd /var/www/html
 log "Current directory: $(pwd)"
 
-# Display directory contents for debugging
-log "Directory contents:"
-ls -la
-
-log "Setting up permissions..."
-
-# Fix permissions for Laravel
+# Set permissions
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
-log "Permissions set successfully"
+log "Permissions set"
 
-log "Checking environment variables..."
+# Create .env file from environment variables
+log "Creating .env file..."
+cat > .env << EOF
+APP_NAME="Uptime Monitor"
+APP_ENV=${APP_ENV:-production}
+APP_KEY=${APP_KEY}
+APP_DEBUG=false
+APP_URL=${APP_URL:-https://tm.mohamed-uptime.com}
+APP_TIMEZONE=UTC
 
-# Check critical environment variables
-echo "APP_ENV: ${APP_ENV:-not set}"
-echo "APP_KEY: ${APP_KEY:0:10}... (truncated for security)"
-echo "DB_CONNECTION: ${DB_CONNECTION:-not set}"
-echo "DB_HOST: ${DB_HOST:-not set}"
-echo "DB_PORT: ${DB_PORT:-not set}"
-echo "DB_DATABASE: ${DB_DATABASE:-not set}"
-echo "DB_USERNAME: ${DB_USERNAME:-not set}"
+LOG_CHANNEL=stack
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
 
-# Extract host and port from DB_HOST if it contains port
-DB_HOST_ONLY="$DB_HOST"
-DB_PORT_ONLY="$DB_PORT"
+DB_CONNECTION=mysql
+DB_HOST=${DB_HOST}
+DB_PORT=3306
+DB_DATABASE=${DB_DATABASE:-uptime}
+DB_USERNAME=${DB_USERNAME:-uptime_user}
+DB_PASSWORD=${DB_PASSWORD}
 
-if echo "$DB_HOST" | grep -q ":"; then
-    DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
-    DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
-fi
+BROADCAST_DRIVER=log
+CACHE_DRIVER=file
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
 
-log "Testing Laravel installation..."
-php artisan --version || {
-    log "ERROR: Laravel test failed!"
-    exit 1
-}
+MEMCACHED_HOST=127.0.0.1
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="Uptime Monitor"
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-2}
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_HOST=
+PUSHER_PORT=443
+PUSHER_SCHEME=https
+PUSHER_APP_CLUSTER=mt1
+
+VITE_APP_NAME="Uptime Monitor"
+VITE_PUSHER_APP_KEY=
+VITE_PUSHER_HOST=
+VITE_PUSHER_PORT=443
+VITE_PUSHER_SCHEME=https
+VITE_PUSHER_APP_CLUSTER=mt1
+
+TELEGRAM_NOTIFER_TOKEN=${TELEGRAM_NOTIFER_TOKEN:-}
+EOF
+
+log ".env file created"
+
+# Test Laravel
+php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }
 log "Laravel is ready"
 
-log "Checking PHP extensions..."
+# Wait for database
+log "Waiting for database..."
+DB_HOST_ONLY=$(echo "$DB_HOST" | cut -d: -f1)
+DB_PORT_ONLY=$(echo "$DB_HOST" | cut -d: -f2)
+DB_PORT_ONLY=${DB_PORT_ONLY:-3306}
 
-# Check required PHP extensions using reliable method
-REQUIRED_EXTENSIONS="pdo pdo_mysql mbstring tokenizer xml ctype json bcmath curl openssl"
-MISSING_EXTENSIONS=""
+wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL" || exit 1
 
-for ext in $REQUIRED_EXTENSIONS; do
-    if check_extension "$ext"; then
-        echo "$ext - OK"
-    else
-        echo "$ext - MISSING"
-        MISSING_EXTENSIONS="$MISSING_EXTENSIONS $ext"
-    fi
-done
-
-if [ -n "$MISSING_EXTENSIONS" ]; then
-    log "ERROR: Missing required PHP extensions:$MISSING_EXTENSIONS"
-    echo ""
-    echo "Available extensions:"
-    php -m
-    echo ""
-    log "Container cannot start without these extensions!"
-    exit 1
-fi
-
-log "All required PHP extensions are installed"
-
-echo ""
-echo "=========================================="
-log "Waiting for database connection..."
-echo "=========================================="
-
-# Wait for database connectivity first
-if ! wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL"; then
-    log "ERROR: Cannot connect to database at $DB_HOST_ONLY:$DB_PORT_ONLY"
-    echo "Please check:"
-    echo "  - DB_HOST: $DB_HOST"
-    echo "  - DB_PORT: $DB_PORT"
-    echo "  - DB_DATABASE: $DB_DATABASE"
-    echo "  - Security groups allow ECS -> RDS connection"
-    echo "  - RDS instance is running and accessible"
-    exit 1
-fi
-
-# Now wait for Laravel to be able to connect with credentials
+# Test database connection
+log "Testing database connection..."
 DB_MAX_TRIES=30
-DB_TRIES=0
-
-until php artisan migrate:status >/dev/null 2>&1; do
-    DB_TRIES=$((DB_TRIES + 1))
-    
-    if [ $DB_TRIES -ge $DB_MAX_TRIES ]; then
-        log "ERROR: Database authentication timeout after $DB_MAX_TRIES attempts"
-        echo "Database is reachable but authentication failed."
-        echo "Please check:"
-        echo "  - DB_USERNAME: $DB_USERNAME"
-        echo "  - DB_PASSWORD: [set]"
-        echo "  - DB_DATABASE: $DB_DATABASE"
-        echo "  - Database user permissions"
-        exit 1
-    fi
-    
-    log "Testing database authentication... (attempt $DB_TRIES/$DB_MAX_TRIES)"
+for ((i=1; i<=DB_MAX_TRIES; i++)); do
+    php artisan migrate:status >/dev/null 2>&1 && break
+    [ $i -eq $DB_MAX_TRIES ] && log "ERROR: Database auth failed" && exit 1
     sleep 2
 done
+log "Database connected"
 
-log "Database connection and authentication established"
+# Run migrations
+log "Running migrations..."
+php artisan migrate --force || log "WARNING: Migration failed"
 
-echo ""
-echo "=========================================="
-log "Running database migrations..."
-echo "=========================================="
+# Run seeders
+log "Running seeders..."
+php artisan db:seed --force || log "WARNING: Seeder failed"
 
-# Run migrations with force flag for production
-if php artisan migrate --force 2>&1 | tee /tmp/migration.log; then
-    log "Migrations completed successfully"
-else
-    log "WARNING: Migration failed! Check logs above."
-    echo "Database connection details:"
-    echo "  DB_HOST: $DB_HOST"
-    echo "  DB_DATABASE: $DB_DATABASE"
-    echo "  DB_USERNAME: $DB_USERNAME"
-    echo ""
-    echo "Migration log:"
-    cat /tmp/migration.log
-    log "Continuing despite migration failure..."
-fi
-
-echo "=========================================="
-log "Running database seeders..."
-echo "=========================================="
-
-# Run seeders without environment check
-if php artisan db:seed --force 2>&1 | tee /tmp/seeder.log; then
-    log "Seeders completed successfully"
-else
-    log "WARNING: Seeder failed, but continuing..."
-    echo "Seeder error log:"
-    cat /tmp/seeder.log
-fi
-
-# Show current migration status
-echo ""
-log "Current migration status:"
-php artisan migrate:status
-
-echo ""
-echo "=========================================="
-log "Laravel cache optimization..."
-echo "=========================================="
-
-# Clear and cache configurations
-log "Clearing caches..."
-php artisan config:clear || log "Config clear failed"
-php artisan cache:clear || log "Cache clear failed"
-php artisan view:clear || log "View clear failed"
-php artisan route:clear || log "Route clear failed"
-
-# Cache for production
+# Cache optimization for production
 if [ "$APP_ENV" = "production" ]; then
     log "Caching for production..."
-    php artisan config:cache || log "Config cache failed"
-    php artisan route:cache || log "Route cache failed"
-    php artisan view:cache || log "View cache failed"
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
 fi
-
-echo ""
-echo "=========================================="
-log "Checking APP_KEY..."
-echo "=========================================="
 
 # Generate APP_KEY if not set
-if [ -z "$APP_KEY" ]; then
-    log "APP_KEY not set, generating new key..."
-    php artisan key:generate --force || {
-        log "ERROR: Key generation failed!"
-        exit 1
-    }
-    log "APP_KEY generated"
-else
-    log "APP_KEY is set from environment"
-fi
+[ -z "$APP_KEY" ] && log "Generating APP_KEY..." && php artisan key:generate --force
 
-echo ""
-echo "=========================================="
-log "Laravel storage link..."
-echo "=========================================="
+# Create storage link
+[ ! -L public/storage ] && php artisan storage:link
 
-# Create storage symlink if it doesn't exist
-if [ ! -L public/storage ]; then
-    log "Creating storage symlink..."
-    php artisan storage:link || log "Storage link failed (may already exist)"
-else
-    log "Storage symlink already exists"
-fi
+# Create health check
+[ ! -f public/health ] && echo "OK" > public/health
 
-echo ""
-echo "=========================================="
-log "Health check setup..."
-echo "=========================================="
+log "Container setup completed"
+log "Starting supervisord..."
 
-# Create a simple health check endpoint file if it doesn't exist
-if [ ! -f public/health ]; then
-    echo "OK" > public/health
-    log "Health check endpoint created at /health"
-else
-    log "Health check endpoint already exists"
-fi
-
-echo ""
-echo "=========================================="
-log "Final system status..."
-echo "=========================================="
-
-echo "Application: $(php artisan --version)"
-echo "Environment: $APP_ENV"
-echo "Database: Connected to $DB_HOST/$DB_DATABASE"
-echo "Cache Driver: ${CACHE_DRIVER:-not set}"
-echo "Queue Driver: ${QUEUE_CONNECTION:-not set}"
-echo "Session Driver: ${SESSION_DRIVER:-not set}"
-
-# Verify critical services
-log "Verifying critical services:"
-check_extension "pdo" && echo "✓ PDO extension" || echo "✗ PDO extension"
-check_extension "pdo_mysql" && echo "✓ MySQL PDO driver" || echo "✗ MySQL PDO driver"
-php -r "try { new PDO('mysql:host=$DB_HOST_ONLY;port=$DB_PORT_ONLY', '$DB_USERNAME', '${DB_PASSWORD:-}'); echo '✓ Database connection'; } catch(Exception \$e) { echo '✗ Database connection: ' . \$e->getMessage(); }" 2>/dev/null || echo "✗ Database connection test failed"
-
-echo ""
-echo "=========================================="
-log "Container setup completed successfully!"
-echo "=========================================="
-echo ""
-log "Starting supervisord (nginx + php-fpm)..."
-
-# Start supervisord to manage nginx and php-fpm
 exec supervisord -c /etc/supervisor/conf.d/supervisord.conf

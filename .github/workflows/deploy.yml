@@ -43,26 +43,6 @@ jobs:
       - name: Run composer install
         run: composer install -n --prefer-dist
 
-      - name: Prepare Laravel Application
-        run: cp .env.ci .env
-        env:
-          DB_CONNECTION: ${{ secrets.CI_DB_CONNECTION }}
-          DB_HOST: ${{ secrets.CI_DB_HOST }}
-          DB_PORT: ${{ secrets.CI_DB_PORT }}
-          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-          DB_USERNAME: ${{ secrets.CI_DB_USER }}
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
-
-      - name: Generate application key
-        run: php artisan key:generate
-        env:
-          DB_CONNECTION: ${{ secrets.CI_DB_CONNECTION }}
-          DB_HOST: ${{ secrets.CI_DB_HOST }}
-          DB_PORT: ${{ secrets.CI_DB_PORT }}
-          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-          DB_USERNAME: ${{ secrets.CI_DB_USER }}
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
-
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:

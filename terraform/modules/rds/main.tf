@@ -74,7 +74,7 @@ resource "aws_db_instance" "main" {
   
    skip_final_snapshot = false
 final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.name_prefix}-final-${replace(timestamp(), ":", "-")}"
-  deletion_protection = true
+  deletion_protection = false 
 
   tags = {
     Name        = "${var.name_prefix}-mysql"

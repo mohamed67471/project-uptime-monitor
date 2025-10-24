@@ -30,12 +30,14 @@ RUN npm install && npm run build
 FROM php:8.1-fpm-alpine
 WORKDIR /var/www/html
 
-# Create www-data user with specific UID/GID
+# Use existing www-data user (already created in php:8.1-fpm-alpine)
+# Set proper UID/GID for the existing www-data user if needed
 RUN set -eux; \
+    deluser www-data 2>/dev/null || true; \
     addgroup -g 1000 -S www-data; \
     adduser -u 1000 -D -S -G www-data www-data
 
-# Install dependencies and PHP extensions as root (required for package installation)
+# Install dependencies and PHP extensions
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev \
@@ -71,7 +73,7 @@ RUN { \
   echo 'max_execution_time = 300'; \
 } > /usr/local/etc/php/conf.d/custom.ini
 
-# Create directories and set permissions as root (required)
+# Create directories and set permissions
 RUN mkdir -p /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx /var/lib/nginx/tmp && \
     chown -R www-data:www-data /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx /var/lib/nginx && \
     chmod -R 755 /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx
@@ -83,7 +85,7 @@ COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Fix nginx config to run as www-data
 RUN sed -i 's/user nginx;/user www-data;/' /etc/nginx/nginx.conf
 
-# Copy app files as root (required)
+# Copy app files
 COPY . /var/www/html
 COPY --from=composer-build /app/vendor /var/www/html/vendor
 COPY --from=assets-build /app/public/build /var/www/html/public/build
@@ -106,20 +108,25 @@ RUN mkdir -p /var/www/html/storage/framework/views \
 # Switch to non-root user for application setup
 USER www-data
 
-# Optimize Laravel (run as www-data to avoid permission issues)
+# Optimize Laravel
 RUN cd /var/www/html && composer dump-autoload --optimize --no-dev
 RUN php artisan config:clear || true \
  && php artisan cache:clear || true \
  && php artisan view:clear || true
 
-# Copy entrypoint scripts (as www-data)
-COPY --chown=www-data:www-data docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY --chown=www-data:www-data wait-for-db.sh /usr/local/bin/wait-for-db.sh
+# Copy entrypoint scripts
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
 
-# Make scripts executable
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+# Make scripts executable and fix line endings
+USER root
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh && \
+    apk add --no-cache dos2unix && \
+    dos2unix /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh && \
+    apk del dos2unix
+USER www-data
 
-# Create nginx directories with proper permissions (as www-data)
+# Create nginx directories with proper permissions
 USER root
 RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx && \
     chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx

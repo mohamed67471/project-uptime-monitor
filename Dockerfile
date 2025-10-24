@@ -30,14 +30,12 @@ RUN npm install && npm run build
 FROM php:8.1-fpm-alpine
 WORKDIR /var/www/html
 
-# Create www-data user
+# Create www-data user with specific UID/GID
 RUN set -eux; \
-    delgroup www-data 2>/dev/null || true; \
-    deluser www-data 2>/dev/null || true; \
     addgroup -g 1000 -S www-data; \
     adduser -u 1000 -D -S -G www-data www-data
 
-# Install dependencies and PHP extensions
+# Install dependencies and PHP extensions as root (required for package installation)
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev \
@@ -55,8 +53,12 @@ RUN php -r "if (!extension_loaded('pdo')) { echo 'PDO extension missing!'; exit(
  && php -r "if (!extension_loaded('pdo_mysql')) { echo 'PDO MySQL extension missing!'; exit(1); }" \
  && echo "✓ PDO extensions verified"
 
-# PHP-FPM configuration
-RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf
+# PHP-FPM configuration - run as www-data
+RUN echo 'listen = 127.0.0.1:9001' > /usr/local/etc/php-fpm.d/zz-docker.conf && \
+    echo 'user = www-data' >> /usr/local/etc/php-fpm.d/zz-docker.conf && \
+    echo 'group = www-data' >> /usr/local/etc/php-fpm.d/zz-docker.conf && \
+    echo 'listen.owner = www-data' >> /usr/local/etc/php-fpm.d/zz-docker.conf && \
+    echo 'listen.group = www-data' >> /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # PHP configuration
 RUN { \
@@ -69,61 +71,67 @@ RUN { \
   echo 'max_execution_time = 300'; \
 } > /usr/local/etc/php/conf.d/custom.ini
 
+# Create directories and set permissions as root (required)
+RUN mkdir -p /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx /var/lib/nginx/tmp && \
+    chown -R www-data:www-data /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx /var/lib/nginx && \
+    chmod -R 755 /var/log/nginx /var/log/supervisor /var/run/supervisor /var/run/nginx
+
 # Copy Nginx & Supervisor configs
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy app files
+# Fix nginx config to run as www-data
+RUN sed -i 's/user nginx;/user www-data;/' /etc/nginx/nginx.conf
+
+# Copy app files as root (required)
 COPY . /var/www/html
 COPY --from=composer-build /app/vendor /var/www/html/vendor
 COPY --from=assets-build /app/public/build /var/www/html/public/build
 COPY --from=composer-build /usr/local/bin/composer /usr/local/bin/composer
-RUN chmod +x /usr/local/bin/composer
 
-# Fix permissions
-RUN chown -R www-data:www-data /var/www/html \
- && find /var/www/html -type f -exec chmod 644 {} \; \
- && find /var/www/html -type d -exec chmod 755 {} \; \
- && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache \
- && chmod +x /var/www/html/artisan
+# Set permissions for app files
+RUN chown -R www-data:www-data /var/www/html && \
+    find /var/www/html -type f -exec chmod 644 {} \; && \
+    find /var/www/html -type d -exec chmod 755 {} \; && \
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache && \
+    chmod +x /var/www/html/artisan /usr/local/bin/composer
 
 # Create necessary Laravel directories
 RUN mkdir -p /var/www/html/storage/framework/views \
     /var/www/html/storage/framework/cache \
     /var/www/html/storage/framework/sessions \
-    /var/www/html/storage/logs
+    /var/www/html/storage/logs && \
+    chown -R www-data:www-data /var/www/html/storage
+
+# Switch to non-root user for application setup
+USER www-data
 
 # Optimize Laravel (run as www-data to avoid permission issues)
-USER www-data
 RUN cd /var/www/html && composer dump-autoload --optimize --no-dev
 RUN php artisan config:clear || true \
  && php artisan cache:clear || true \
  && php artisan view:clear || true
 
-USER root
+# Copy entrypoint scripts (as www-data)
+COPY --chown=www-data:www-data docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=www-data:www-data wait-for-db.sh /usr/local/bin/wait-for-db.sh
 
-# Create nginx directories
-RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx \
- && chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx
+# Make scripts executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh
+
+# Create nginx directories with proper permissions (as www-data)
+USER root
+RUN mkdir -p /var/lib/nginx/tmp /var/log/nginx /run/nginx && \
+    chown -R www-data:www-data /var/lib/nginx /var/log/nginx /run/nginx
+USER www-data
 
 EXPOSE 9000
-
-# Copy entrypoint scripts
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY wait-for-db.sh /usr/local/bin/wait-for-db.sh
-
-# Ensure scripts have no BOM, convert CRLF -> LF, make executable
-RUN apk add --no-cache dos2unix \
- && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/docker-entrypoint.sh || true \
- && sed -i '1s/^\xEF\xBB\xBF//' /usr/local/bin/wait-for-db.sh || true \
- && dos2unix /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
- && chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/wait-for-db.sh \
- && apk del dos2unix
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD php /var/www/html/artisan inspire > /dev/null 2>&1 || exit 1
 
+# Run as non-root user
 USER www-data
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

@@ -140,7 +140,8 @@ if nc -z "$DB_HOST_ONLY" "$DB_PORT_ONLY"; then
     log "✓ Network connection successful"
 else
     log "✗ Network connection failed to $DB_HOST_ONLY:$DB_PORT_ONLY"
-    exit 1
+    # Don't exit - continue and let the application retry later
+    log "WARNING: Continuing without network connectivity..."
 fi
 
 # Test raw PHP database connection using a temporary file (more reliable)
@@ -159,67 +160,76 @@ try {
     $pdo = new PDO($dsn, $username, $password);
     echo "SUCCESS: Raw database connection working" . PHP_EOL;
 } catch (Exception $e) {
-    echo "ERROR: Raw connection failed: " . $e->getMessage() . PHP_EOL;
-    exit(1);
+    echo "WARNING: Raw connection failed: " . $e->getMessage() . PHP_EOL;
+    // Don't exit - let the script continue
 }
 ?>
 ENDOFFILE
 
-DB_HOST_ONLY="$DB_HOST_ONLY" DB_PORT_ONLY="$DB_PORT_ONLY" DB_DATABASE="$DB_DATABASE" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" php /tmp/test_db.php
+if ! DB_HOST_ONLY="$DB_HOST_ONLY" DB_PORT_ONLY="$DB_PORT_ONLY" DB_DATABASE="$DB_DATABASE" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" php /tmp/test_db.php; then
+    log "WARNING: Raw database connection test failed, but continuing..."
+fi
 
 # Test Laravel
 php artisan --version || { log "ERROR: Laravel test failed"; exit 1; }
 log "Laravel is ready"
 
-# Wait for database to be fully ready
+# Wait for database to be fully ready (but don't exit on failure)
 log "Waiting for database to be ready..."
-wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL" || exit 1
+if ! wait_for_service "$DB_HOST_ONLY" "$DB_PORT_ONLY" "MySQL"; then
+    log "WARNING: MySQL service wait timeout, but continuing..."
+fi
 
-# Test Laravel database authentication
+# Test Laravel database authentication (but don't exit on failure)
 log "Testing Laravel database authentication..."
 DB_MAX_TRIES=30
 i=1
+DB_CONNECTED=false
+
 while [ $i -le $DB_MAX_TRIES ]; do
     if php artisan migrate:status >/dev/null 2>&1; then
         log "✓ Laravel database authentication successful"
+        DB_CONNECTED=true
         break
-    fi
-    if [ $i -eq $DB_MAX_TRIES ]; then
-        log "ERROR: Laravel database auth failed after $DB_MAX_TRIES attempts"
-        exit 1
     fi
     log "Database auth attempt $i/$DB_MAX_TRIES failed, retrying..."
     i=$((i + 1))
     sleep 2
 done
 
-log "Database connected and authenticated"
+if [ "$DB_CONNECTED" = false ]; then
+    log "WARNING: Laravel database auth failed after $DB_MAX_TRIES attempts"
+    log "Continuing without database connection for now..."
+    # Don't exit - let the container start and retry later
+else
+    log "Database connected and authenticated"
+fi
 
-# Run migrations
+# Run migrations (but continue even if they fail)
 log "Running migrations..."
 php artisan migrate --force || log "WARNING: Migration failed"
 
-# Run seeders
+# Run seeders (but continue even if they fail)
 log "Running seeders..."
 php artisan db:seed --force || log "WARNING: Seeder failed"
 
 # Cache optimization for production
 if [ "$APP_ENV" = "production" ]; then
     log "Caching for production..."
-    php artisan config:cache || true
-    php artisan route:cache || true
-    php artisan view:cache || true
+    php artisan config:cache || log "WARNING: Config cache failed"
+    php artisan route:cache || log "WARNING: Route cache failed"
+    php artisan view:cache || log "WARNING: View cache failed"
 fi
 
 # Generate APP_KEY if not set
 if [ -z "$APP_KEY" ]; then
     log "Generating APP_KEY..."
-    php artisan key:generate --force || exit 1
+    php artisan key:generate --force || log "WARNING: Key generation failed"
 fi
 
 # Create storage link
 if [ ! -L public/storage ]; then
-    php artisan storage:link || true
+    php artisan storage:link || log "WARNING: Storage link failed"
 fi
 
 # Create health check

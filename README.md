@@ -95,15 +95,6 @@ Password: password
 git clone https://github.com/mohamed67471/project-uptime-monitor.git
 cd project-uptime-monitor/uptime-monitor
 
-🚢 Deployment
-Automated (CI/CD)
-
-Every push to main triggers:
-
-✅ PHPUnit + static analysis
-🛠 Docker image build & Trivy scan
-🚀 ECS service update (zero-downtime deploy)
-
 
 
 git add .

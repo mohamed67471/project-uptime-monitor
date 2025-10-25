@@ -44,7 +44,7 @@ Built with **reliability, scalability, and security** in mind.
 
 ## 🌐 Live Demo
 
-
+https://github.com/user-attachments/assets/9374cefb-e5d8-4d0a-be2e-6f5a50effaff
 
 
 
@@ -105,44 +105,13 @@ Every push to main triggers:
 
 
 
-<img width="940" height="463" alt="image" src="https://github.com/user-attachments/assets/4f0b731c-fcad-44b4-a017-e180aa17399d" />
-
-
-
-<img width="940" height="612" alt="image" src="https://github.com/user-attachments/assets/3ac4478e-8ab1-4f42-9887-79b65fb4b956" />
-
-
-<img width="940" height="451" alt="image" src="https://github.com/user-attachments/assets/ca0c065b-1c7e-4c1f-be79-bf642665d63d" />
-
-
-
-
-
 git add .
 git commit -m "feat: new feature"
 git push origin main
 
 📊 Monitoring
+
 ## Access via AWS CloudWatch
-
-<img width="938" height="403" alt="image" src="https://github.com/user-attachments/assets/cc76ae90-8f5a-4c50-9a6f-5fbd4a6444bc" />
-
-
-
-
-
-
-
-<img width="939" height="401" alt="image" src="https://github.com/user-attachments/assets/f53b2145-825a-4695-88cd-220d571409ef" />
-
-
-
-
-
-
-
-
-
 CloudWatch Alarms  
 Pre-configured alarms:
 
@@ -155,6 +124,16 @@ Pre-configured alarms:
 ```
 aws logs tail /ecs/uptime-monitor-production --follow --region eu-west-2
 
+## ci/cd and trivy scan 
+<img width="940" height="463" alt="image" src="https://github.com/user-attachments/assets/b8ed37e0-5f32-47a2-b0c4-722170bc1077" />
+<img width="940" height="451" alt="image" src="https://github.com/user-attachments/assets/a2e343db-7810-4395-a781-129cb331f1da" />
+<img width="940" height="612" alt="image" src="https://github.com/user-attachments/assets/2dffb47f-bc7d-4b8a-a863-0838bd4e010a" />
+
+## cloud watch dashboard 
+<img width="939" height="401" alt="image" src="https://github.com/user-attachments/assets/bdf47bf3-3d48-4bf0-b5dc-9e53ebcf23e4" />
+<img width="938" height="403" alt="image" src="https://github.com/user-attachments/assets/87acc915-36e8-4e5d-98eb-11bf50f97884" />
+
+
 🔒 Security  
 Infrastructure
 
@@ -164,15 +143,14 @@ Infrastructure
 - S3 + DynamoDB for state locking  
 - SSL/TLS enforced via ACM  
 - OIDC authentication for CI/CD (no static keys)  
-```
-```
+
 🧭 Future Improvements
 
 ✅ Add WAF protection  
 ✅ RDS across multiple AZs for backup  
 ✅ SNS Integration: Email/SMS notifications when sites go down  
 ✅ Slack/Discord Webhooks: Real-time alerts to team channels  
-```
+
 
 
 

@@ -25,6 +25,7 @@ Built with **reliability, scalability, and security** in mind.
 
 ## 🏗️ Architecture  
 
+<img width="777" height="1205" alt="uptimemonitor drawio" src="https://github.com/user-attachments/assets/188f01d2-5b3e-4bbd-b7ac-2b47e3dc134b" />
 
 
 

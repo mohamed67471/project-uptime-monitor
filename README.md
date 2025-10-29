@@ -1,4 +1,4 @@
-# 🚀 Uptime Monitor  
+#  Uptime Monitor  
 
 [![AWS ECS](https://img.shields.io/badge/AWS-ECS-orange?logo=amazon-aws)](https://aws.amazon.com/ecs/)  [![Infrastructure](https://img.shields.io/badge/Infrastructure-Terraform-purple?logo=terraform)](https://www.terraform.io/)  [![Container](https://img.shields.io/badge/Container-Docker-blue?logo=docker)](https://www.docker.com/) [![Framework](https://img.shields.io/badge/Framework-Laravel-red?logo=laravel)](https://laravel.com/)  
 
@@ -8,7 +8,7 @@ Built with **reliability, scalability, and security** in mind.
 
 ---
 
-## ✨ Features  
+##  Features  
 
 - **Website Monitoring** – Track uptime and response times across multiple domains  
 - **Multi-Vendor Support** – Group and organize sites per client/vendor  
@@ -23,9 +23,10 @@ Built with **reliability, scalability, and security** in mind.
 
 ---
 
-## 🏗️ Architecture  
+## Architecture  
 
-<img width="777" height="1205" alt="uptimemonitor drawio" src="https://github.com/user-attachments/assets/188f01d2-5b3e-4bbd-b7ac-2b47e3dc134b" />
+<img width="3516" height="4780" alt="image" src="https://github.com/user-attachments/assets/7f092ec4-a5b0-41cb-87e8-3bc6358b41d5" />
+
 
 
 
@@ -43,7 +44,7 @@ Built with **reliability, scalability, and security** in mind.
 
 ---
 
-## 🌐 Live Demo
+##  Live Demo
 
 https://github.com/user-attachments/assets/9374cefb-e5d8-4d0a-be2e-6f5a50effaff
 
@@ -88,7 +89,7 @@ Password: password
 
 ---
 
-## 🚀 Infrastructure Setup
+##  Infrastructure Setup
 
 ### Clone Repository
 ```bash
@@ -107,12 +108,12 @@ git push origin main
 CloudWatch Alarms  
 Pre-configured alarms:
 
-⚠️ ECS CPU > 80%  
-⚠️ ECS Memory > 80%  
-⚠️ ALB 5xx errors > 10/minute  
-⚠️ Unhealthy targets detected  
-⚠️ RDS CPU > 80%  
-⚠️ RDS free storage < 2GB  
+ ECS CPU > 80%  
+ ECS Memory > 80%  
+ ALB 5xx errors > 10/minute  
+ Unhealthy targets detected  
+ RDS CPU > 80%  
+ RDS free storage < 2GB  
 ```
 aws logs tail /ecs/uptime-monitor-production --follow --region eu-west-2
 
@@ -126,7 +127,7 @@ aws logs tail /ecs/uptime-monitor-production --follow --region eu-west-2
 <img width="938" height="403" alt="image" src="https://github.com/user-attachments/assets/87acc915-36e8-4e5d-98eb-11bf50f97884" />
 
 
-🔒 Security  
+ Security  
 Infrastructure
 
 - Private subnets (no public ECS/RDS access)  
@@ -136,7 +137,7 @@ Infrastructure
 - SSL/TLS enforced via ACM  
 - OIDC authentication for CI/CD (no static keys)  
 
-🧭 Future Improvements
+Future Improvements
 
 ✅ Add WAF protection  
 ✅ RDS across multiple AZs for backup  
